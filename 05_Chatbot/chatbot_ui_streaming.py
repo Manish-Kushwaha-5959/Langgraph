@@ -19,7 +19,18 @@ if user_input:
     with st.chat_message("user"):
         st.write(user_input)
 
-    response = chatbot.invoke({"messages": [HumanMessage(content=user_input)]}, config=CONFIG)['messages'][-1]
-    st.session_state["messages"].append({"role": "ai", "content": response.content})
+    # response = chatbot.invoke({"messages": [HumanMessage(content=user_input)]}, config=CONFIG)['messages'][-1]
+    # st.session_state["messages"].append({"role": "ai", "content": response.content})
+    # with st.chat_message("ai"):
+    #     st.write(response.content)
+    
     with st.chat_message("ai"):
-        st.write(response.content)
+        response = st.write_stream(
+            message_chunk.content for message_chunk, metadata in chatbot.stream(
+                {"messages": [HumanMessage(content=user_input)]},
+                config=CONFIG,
+                stream_mode="messages"
+            )
+        )
+    st.session_state["messages"].append({"role": "ai", "content": response})
+    

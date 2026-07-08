@@ -44,14 +44,22 @@ chatbot = graph.compile(checkpointer=checkpointer)
 if __name__ == "__main__":
 
     config = {"configurable" : {"thread_id" : "1"}}
-    while True:
-        user_input = input("User: ")
+    # while True:
+    #     user_input = input("User: ")
 
-        if user_input.strip().lower() in ["exit", "quite", "bye"]:
-            break
+    #     if user_input.strip().lower() in ["exit", "quite", "bye"]:
+    #         break
 
-        response = chatbot.invoke({"messages": [HumanMessage(content=user_input)]}, config=config)
+    #     response = chatbot.invoke({"messages": [HumanMessage(content=user_input)]}, config=config)
 
-        print(f"AI: {response['messages'][-1].content}")
+    #     print(f"AI: {response['messages'][-1].content}")
+
+    for message_chunk, metadata in chatbot.stream(
+        {"messages": [HumanMessage(content="write a 500 words blog on Vollyball")]},
+        config= config,
+        stream_mode= "messages"
+    ):
+        if message_chunk.content:
+            print(message_chunk.content, end="", flush=True)
 
 

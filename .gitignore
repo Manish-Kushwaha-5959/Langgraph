@@ -1,3 +1,4 @@
 .env
 venv/
 __pycache__
+06_Chatbot/5_chatbot.db

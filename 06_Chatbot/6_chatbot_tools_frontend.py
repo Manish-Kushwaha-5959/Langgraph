@@ -1,6 +1,6 @@
 import streamlit as st
-from langchain_core.messages import HumanMessage
-from chatbot_database_backend import chatbot, get_threads
+from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
+from chatbot_tools_backend import chatbot, get_threads
 import uuid
 import os
 
@@ -55,10 +55,9 @@ for thread in st.session_state["threads"][::-1]:
         temp_messages = []
         for msg in messages:
             if isinstance(msg, HumanMessage):
-                role = "user"
-            else:
-                role = 'ai'
-            temp_messages.append({'role': role, 'content': msg.content})
+                temp_messages.append({'role': 'user', 'content': msg.content})
+            elif isinstance(msg, AIMessage) and msg.content and not msg.content=="\n\n" :
+                temp_messages.append({'role': 'ai', 'content': msg.content})
         st.session_state["messages"] = temp_messages
 
 
@@ -82,13 +81,14 @@ Based only on the user's first message, generate a concise chat title.
 user first message: {user_input}
 
 Rules:
-- Maximum 2–5 words.
+- You are absolutely requried to produce a title with Maximum 2–5 words.
 - Capture the main topic or intent.
 - Use natural title case.
 - Do not include quotation marks, emojis, punctuation at the end, or prefixes like "Title:".
 - Do not invent details that aren't in the user's message.
 - If the message is a greeting (e.g., "Hi", "Hello", "How are you"), return "General Chat".
 - Output only the title and nothing else.
+- do not give blank response
 """
         title = chatbot.invoke({"messages": HumanMessage(content=prompt)}, config=NEW_CHAT_CONFIG)["messages"][-1].content
         for i, thread in enumerate(st.session_state["threads"]):
@@ -102,14 +102,43 @@ Rules:
         st.write(user_input)
     
     CONFIG = {"configurable": {"thread_id": st.session_state["thread_id"]}}
-    with st.chat_message("ai"):
-        response = st.write_stream(
-            message_chunk.content for message_chunk, metadata in chatbot.stream(
+
+    with st.chat_message("assistant"):
+        # Use a mutable holder so the generator can set/modify it
+        status_holder = {"box": None}
+
+        def ai_only_stream():
+            for message_chunk, metadata in chatbot.stream(
                 {"messages": [HumanMessage(content=user_input)]},
                 config=CONFIG,
-                stream_mode="messages"
+                stream_mode="messages",
+            ):
+                # Lazily create & update the SAME status container when any tool runs
+                if isinstance(message_chunk, ToolMessage):
+                    tool_name = getattr(message_chunk, "name", "tool")
+                    if status_holder["box"] is None:
+                        status_holder["box"] = st.status(
+                            f"🔧 Using `{tool_name}` …", expanded=True
+                        )
+                    else:
+                        status_holder["box"].update(
+                            label=f"🔧 Using `{tool_name}` …",
+                            state="running",
+                            expanded=True,
+                        )
+
+                # Stream ONLY assistant tokens
+                if isinstance(message_chunk, AIMessage):
+                    yield message_chunk.content
+
+        ai_message = st.write_stream(ai_only_stream())
+
+        # Finalize only if a tool was actually used
+        if status_holder["box"] is not None:
+            status_holder["box"].update(
+                label="✅ Tool finished", state="complete", expanded=False
             )
-        )
-    st.session_state["messages"].append({"role": "ai", "content": response})
+
+    st.session_state["messages"].append({"role": "ai", "content": ai_message})
     st.rerun()
     
